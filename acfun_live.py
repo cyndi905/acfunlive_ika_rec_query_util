@@ -163,32 +163,32 @@ if __name__ == '__main__':
     except getopt.GetoptError:
         pass
     if list_mode:
-        conn = sqlite3.connect('liveika.db')
-        cur = conn.cursor()
-        query_sql = '''
-        SELECT liveId,uid,name,startTime,title,iKaURL,iKaCutId from livelist
-        '''
-        res = cur.execute(query_sql).fetchall()
-        if len(res) != 0:
-            p_str = ''
-            for row in res:
-                live_id = row[0]
-                uid = row[1]
-                name = row[2]
-                start_time = row[3]
-                title = row[4]
-                ika_url = row[5]
-                ika_cut_id = row[6]
-                p_str = p_str+'主播：%s（%d），直播标题：%s，爱咔链接：%s，爱咔录播id：%d，开播时间：%s\n' % (
-                    name, uid, title, ika_url, ika_cut_id, start_time)
-                print('主播：%s（%d），直播标题：%s，爱咔链接：%s，爱咔录播id：%d，开播时间：%s' % (
-                name, uid, title, ika_url, ika_cut_id, start_time))
-            with open(out_put_file_name, "w", encoding='utf-8') as file:
-                file.write(p_str)
-                print('结果已导出到：%s'% out_put_file_name)
-        else:
-            print('数据库中没有数据')
-            exit()
+        with sqlite3.connect('liveika.db') as conn:
+            cur = conn.cursor()
+            query_sql = '''
+            SELECT liveId,uid,name,startTime,title,iKaURL,iKaCutId from livelist where iKaCutId != 0
+            '''
+            res = cur.execute(query_sql).fetchall()
+            if len(res) != 0:
+                p_str = ''
+                for row in res:
+                    live_id = row[0]
+                    uid = row[1]
+                    name = row[2]
+                    start_time = row[3]
+                    title = row[4]
+                    ika_url = row[5]
+                    ika_cut_id = row[6]
+                    p_str = p_str+'主播：%s（%d），直播标题：%s，爱咔链接：%s，爱咔录播id：%d，开播时间：%s\n' % (
+                        name, uid, title, ika_url, ika_cut_id, start_time)
+                    print('主播：%s（%d），直播标题：%s，爱咔链接：%s，爱咔录播id：%d，开播时间：%s' % (
+                    name, uid, title, ika_url, ika_cut_id, start_time))
+                with open(out_put_file_name, "w", encoding='utf-8') as file:
+                    file.write(p_str)
+                    print('结果已导出到：%s'% out_put_file_name)
+            else:
+                print('数据库中没有数据')
+                exit()
     else:
         headers = {
             'User-Agent': ua,

@@ -214,7 +214,7 @@ if __name__ == '__main__':
             interval = 1
         get_ika_id_task()
         schedule.clear()
-        schedule.every(interval).minute.do(get_ika_id_task)
+        schedule.every(interval).minutes.do(get_ika_id_task)
         while True:
             schedule.run_pending()
             time.sleep(1)

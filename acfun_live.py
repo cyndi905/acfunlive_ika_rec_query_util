@@ -24,6 +24,14 @@ iKaURL TEXT NOT NULL,
 iKaCutId INTEGER NOT NULL DEFAULT 0
 );
 '''
+create_err_table = '''CREATE TABLE IF NOT EXISTS getIKarCutErrList (
+    liveID TEXT PRIMARY KEY,
+uid INTEGER NOT NULL
+);
+'''
+insert_err = '''
+INSERT OR IGNORE INTO getIKarCutErrList (liveID,uid) VALUES (?,?)
+'''
 insert_rec = '''INSERT OR IGNORE INTO livelist
 (liveID, uid, name, startTime, title, iKaURL, iKaCutId)
 VALUES
@@ -31,11 +39,15 @@ VALUES
 select_live_id = 'SELECT COUNT(1) AS count FROM livelist WHERE liveID = ?'
 DEFAULT_JSON = {"targe_uid": [], "interval": 1}
 headers = {}
-
-
+connect_retry_time = 0
 def acfunRequest(url):
-    ret = requests.get(url, headers=headers)
-    return ret
+    global connect_retry_time
+    try:
+        ret = requests.get(url, headers=headers)
+        connect_retry_time = 0
+        return ret
+    except Exception:
+        return None
 
 
 def get_live_list(page):
@@ -43,40 +55,45 @@ def get_live_list(page):
     logger.info('正在获取第%d页数据' % (page + 1))
     url = 'https://live.acfun.cn/api/channel/list?count=100&pcursor={}'.format(page)
     ret = acfunRequest(url)
-    if ret.status_code == 200:
-        r_json = ret.json()
-        if 'isError' in r_json:
-            error_count += 1
-            if error_count < 3:
-                logger.error('获取失败，重试中...%d' % error_count)
-                acfunRequest(url)
-            else:
-                logger.error('获取失败，退出程序')
-                sys.exit()
-        else:
-            error_count = 0
-            list_len = len(r_json['liveList'])
-            total = r_json['totalCount']
-            if page > 0:
-                cur_get_count = (page + 1) * 100 + list_len
-            else:
-                cur_get_count = list_len
-            for i in range(0, list_len):
-                l = r_json['liveList'][i]
-                time_local = time.localtime(l['createTime'] / 1000)
-                dt = time.strftime("%Y-%m-%d %H:%M:%S", time_local)
-                liver = l['user']['name']
-                live_dic[str(l['authorId'])] = {'authorName': liver, 'liveId': l['liveId'], 'title': l['title'],
-                                                'startLiveTime': dt}
-            if cur_get_count < total:
-                return True
-            else:
-                logger.info('数据获取完成')
-                logger.info('%d个正在直播' % total)
-                return False
+    if ret == None:
+        logger.error('连接网络错误，重试中')
+        time.sleep(5)
+        get_live_list(page)
     else:
-        logger.error('error：%d' % ret.status_code)
-        return False
+        if ret.status_code == 200:
+            r_json = ret.json()
+            if 'isError' in r_json:
+                error_count += 1
+                if error_count < 3:
+                    logger.error('获取失败，重试中...%d' % error_count)
+                    acfunRequest(url)
+                else:
+                    logger.error('获取失败，退出程序')
+                    sys.exit()
+            else:
+                error_count = 0
+                list_len = len(r_json['liveList'])
+                total = r_json['totalCount']
+                if page > 0:
+                    cur_get_count = (page + 1) * 100 + list_len
+                else:
+                    cur_get_count = list_len
+                for i in range(0, list_len):
+                    l = r_json['liveList'][i]
+                    time_local = time.localtime(l['createTime'] / 1000)
+                    dt = time.strftime("%Y-%m-%d %H:%M:%S", time_local)
+                    liver = l['user']['name']
+                    live_dic[str(l['authorId'])] = {'authorName': liver, 'liveId': l['liveId'], 'title': l['title'],
+                                                    'startLiveTime': dt}
+                if cur_get_count < total:
+                    return True
+                else:
+                    logger.info('数据获取完成')
+                    logger.info('%d个正在直播' % total)
+                    return False
+        else:
+            logger.error('error：%d' % ret.status_code)
+            return False
 
 
 def generate_did(code_len=16):
@@ -97,20 +114,31 @@ def get_ika_cut_id(author_id):
             url = 'https://live.acfun.cn/rest/pc-direct/live/getLiveCutInfo?authorId={}&liveId={}'.format(author_id,
                                                                                                           live_id)
             res = acfunRequest(url)
-            r_json = res.json()
-            authorName = live_dic[author_id]['authorName']
-            try:
-                iKaUrl = r_json['liveCutUrl']
-                iKaCutId = int(re.findall('[0-9]+', iKaUrl)[0])
-            except KeyError:
-                iKaUrl = '该主包未开启爱咔录像权限'
-                iKaCutId = 0
-            title = live_dic[author_id]['title']
-            startLiveTime = live_dic[author_id]['startLiveTime']
-            uid = int(author_id)
-            cur.execute(insert_rec, (live_id, uid, authorName, startLiveTime, title, iKaUrl, iKaCutId))
-            conn.commit()
-            logger.info('主包直播id：%s（%s），录播爱咔链接：%s' % (live_id, authorName, iKaUrl))
+            try_time = 0
+            if res == None:
+                if try_time < 3:
+                    try_time += 1
+                    print('获取爱咔链接失败，正在重试：%d' % try_time)
+                    get_ika_cut_id(author_id)
+                else:
+                    cur.execute(insert_err, (live_id, int(author_id)))
+                    conn.commit()
+                    logger.error('获取爱咔链接失败，主包id:{}，直播id: {}'.format(author_id, live_id))
+            else:
+                r_json = res.json()
+                authorName = live_dic[author_id]['authorName']
+                try:
+                    iKaUrl = r_json['liveCutUrl']
+                    iKaCutId = int(re.findall('[0-9]+', iKaUrl)[0])
+                except KeyError:
+                    iKaUrl = '该主包未开启爱咔录像权限'
+                    iKaCutId = 0
+                title = live_dic[author_id]['title']
+                startLiveTime = live_dic[author_id]['startLiveTime']
+                uid = int(author_id)
+                cur.execute(insert_rec, (live_id, uid, authorName, startLiveTime, title, iKaUrl, iKaCutId))
+                conn.commit()
+                logger.info('主包直播id：%s（%s），录播爱咔链接：%s' % (live_id, authorName, iKaUrl))
     else:
         logger.info('主包(%s)未开播' % author_id)
 
@@ -185,7 +213,7 @@ if __name__ == '__main__':
                     name, uid, title, ika_url, ika_cut_id, start_time))
                 with open(out_put_file_name, "w", encoding='utf-8') as file:
                     file.write(p_str)
-                    print('结果已导出到：%s'% out_put_file_name)
+                    print('结果已导出到：%s' % out_put_file_name)
             else:
                 print('数据库中没有数据')
                 exit()

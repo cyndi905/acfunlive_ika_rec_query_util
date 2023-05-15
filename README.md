@@ -25,3 +25,9 @@ python3 acfun_live.py
 python3 acfun_live.py -l [-f] [outputfilename]
 ```
 可通过-f 指定输出记录文件名
+
+### 重新获取爱咔URL数据
+当在获取爱咔URL的步骤失败三次时（网络原因），会把对应的`liveId`存储到获取失败的数据表中，可通过以下命令重新尝试获取爱咔URL
+```
+python3 acfun_live.py -q
+```

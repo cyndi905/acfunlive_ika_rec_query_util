@@ -203,7 +203,7 @@ if __name__ == '__main__':
   get_err_data_mode = False
   out_put_file_name = 'out.txt'
   try:
-    opts, args = getopt.getopt(sys.argv[1:], "-h-f-q-l:", ['help', 'filename=', 'query-err', 'list'])
+    opts, args = getopt.getopt(sys.argv[1:], "-h-f:-q-l", ['help', 'filename=', 'query-err', 'list'])
     for opt_name, opt_value in opts:
       if opt_name in ('-h', '--help'):
         print("[*] Help info")
